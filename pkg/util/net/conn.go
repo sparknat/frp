@@ -147,7 +147,7 @@ func WrapCloseNotifyConn(c net.Conn, closeFn func()) net.Conn {
 
 func (cc *CloseNotifyConn) Close() (err error) {
 	cc.closeFlag.Do(func() {
-		err = cc.Close()
+		err = cc.Conn.Close()
 		if cc.closeFn != nil {
 			cc.closeFn()
 		}

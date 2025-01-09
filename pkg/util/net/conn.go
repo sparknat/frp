@@ -160,28 +160,30 @@ func (cc *CloseNotifyConn) Close() (err error) {
 type StatsConn struct {
 	net.Conn
 
-	closed     int64 // 1 means closed
-	totalRead  int64
-	totalWrite int64
-	statsFunc  func(totalRead, totalWrite int64)
+	closed  int64 // 1 means closed
+	onRead  func(n int)
+	onWrite func(n int)
+	onClose func()
 }
 
-func WrapStatsConn(conn net.Conn, statsFunc func(total, totalWrite int64)) *StatsConn {
+func WrapStatsConn(conn net.Conn, onRead func(n int), onWrite func(n int), onClose func()) *StatsConn {
 	return &StatsConn{
-		Conn:      conn,
-		statsFunc: statsFunc,
+		Conn:    conn,
+		onRead:  onRead,
+		onWrite: onWrite,
+		onClose: onClose,
 	}
 }
 
 func (statsConn *StatsConn) Read(p []byte) (n int, err error) {
 	n, err = statsConn.Conn.Read(p)
-	statsConn.totalRead += int64(n)
+	statsConn.onRead(n)
 	return
 }
 
 func (statsConn *StatsConn) Write(p []byte) (n int, err error) {
 	n, err = statsConn.Conn.Write(p)
-	statsConn.totalWrite += int64(n)
+	statsConn.onWrite(n)
 	return
 }
 
@@ -189,9 +191,7 @@ func (statsConn *StatsConn) Close() (err error) {
 	old := atomic.SwapInt64(&statsConn.closed, 1)
 	if old != 1 {
 		err = statsConn.Conn.Close()
-		if statsConn.statsFunc != nil {
-			statsConn.statsFunc(statsConn.totalRead, statsConn.totalWrite)
-		}
+		statsConn.onClose()
 	}
 	return
 }

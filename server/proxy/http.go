@@ -182,17 +182,16 @@ func (pxy *HTTPProxy) GetRealConn(remoteAddr string) (workConn net.Conn, err err
 	}
 
 	workConn = netpkg.WrapReadWriteCloserToConn(rwc, tmpConn)
-	workConn = netpkg.WrapStatsConn(workConn, pxy.updateStatsAfterClosedConn)
-	metrics.Server.OpenConnection(pxy.GetName(), pxy.GetConfigurer().GetBaseConfig().Type)
-	return
-}
 
-func (pxy *HTTPProxy) updateStatsAfterClosedConn(totalRead, totalWrite int64) {
 	name := pxy.GetName()
 	proxyType := pxy.GetConfigurer().GetBaseConfig().Type
-	metrics.Server.CloseConnection(name, proxyType)
-	metrics.Server.AddTrafficIn(name, proxyType, totalWrite)
-	metrics.Server.AddTrafficOut(name, proxyType, totalRead)
+	workConn = netpkg.WrapStatsConn(workConn,
+		func(n int) { metrics.Server.AddTrafficOut(name, proxyType, int64(n)) },
+		func(n int) { metrics.Server.AddTrafficIn(name, proxyType, int64(n)) },
+		func() { metrics.Server.CloseConnection(name, proxyType) },
+	)
+	metrics.Server.OpenConnection(name, proxyType)
+	return
 }
 
 func (pxy *HTTPProxy) Close() {

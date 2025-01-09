@@ -19,7 +19,7 @@ import (
 	"errors"
 	"io"
 	"net"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/fatedier/golib/crypto"
@@ -132,8 +132,7 @@ func (conn *WrapReadWriteCloserConn) SetWriteDeadline(t time.Time) error {
 type CloseNotifyConn struct {
 	net.Conn
 
-	// 1 means closed
-	closeFlag int32
+	closeFlag sync.Once
 
 	closeFn func()
 }
@@ -147,20 +146,19 @@ func WrapCloseNotifyConn(c net.Conn, closeFn func()) net.Conn {
 }
 
 func (cc *CloseNotifyConn) Close() (err error) {
-	pflag := atomic.SwapInt32(&cc.closeFlag, 1)
-	if pflag == 0 {
+	cc.closeFlag.Do(func() {
 		err = cc.Close()
 		if cc.closeFn != nil {
 			cc.closeFn()
 		}
-	}
+	})
 	return
 }
 
 type StatsConn struct {
 	net.Conn
 
-	closed  int64 // 1 means closed
+	closed  sync.Once
 	onRead  func(n int)
 	onWrite func(n int)
 	onClose func()
@@ -188,11 +186,10 @@ func (statsConn *StatsConn) Write(p []byte) (n int, err error) {
 }
 
 func (statsConn *StatsConn) Close() (err error) {
-	old := atomic.SwapInt64(&statsConn.closed, 1)
-	if old != 1 {
+	statsConn.closed.Do(func() {
 		err = statsConn.Conn.Close()
 		statsConn.onClose()
-	}
+	})
 	return
 }
 
